@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from xml.parsers.expat import model
 
 import typer
+from typer import models
 
 from launchlens.errors import LaunchLensError
 from launchlens.service import LaunchLensService
@@ -83,3 +85,45 @@ def generate(
         emit_json(artifact) if is_json(ctx) else (None if stream else show_artifact(artifact))
     except LaunchLensError as error:
         handle_error(ctx, error)
+
+@app.command()
+def benchmark(
+    ctx: typer.Context,
+    source: str = typer.Argument(...),
+    kind: str = typer.Option("pitch", "--kind"),
+    models: list[str] = typer.Option(..., "--model", "-m"),
+    rounds: int = typer.Option(3, "--rounds", min=1, max=20),
+) -> None:
+    """Compare model latency for the same project artifact prompt."""
+    try:
+        results = LaunchLensService().benchmark(source, kind, models,
+        rounds)
+        emit_json(results) if is_json(ctx) else show_benchmark(results)
+    except (LaunchLensError, ValueError) as error:
+        handle_error(ctx, error)
+
+
+@app.command("set-key")
+def set_key(api_key: str | None = typer.Option(None, prompt=True,
+hide_input=True)) -> None:
+    if not api_key:
+        raise typer.BadParameter("API key is required")
+    service = LaunchLensService()
+    service.config.api_key = api_key.strip()
+    service.config_store.save(service.config)
+    console.print("[green]Groq key saved locally.[/green]")
+
+
+@app.command("set-model")
+def set_model(model: str = typer.Argument(...)) -> None:
+    service = LaunchLensService()
+    service.config.model = model.strip()
+    service.config_store.save(service.config)
+    console.print(f"[green]Default model set to {model}.[/green]")
+
+def main() -> None:
+    app()
+
+
+if __name__ == "__main__":
+    main()
